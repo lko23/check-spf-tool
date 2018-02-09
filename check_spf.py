@@ -2,22 +2,37 @@ from netaddr import IPNetwork, IPSet, IPAddress
 import sys
 import dns.resolver
 
-if len(sys.argv) < 2:
-  print "Usuage check_spf.py domain_name ip_address [ip_address] ..."
+if len(sys.argv) < 1:
+  print("Usuage check_spf.py domain_name")
   sys.exit(1)
 
-host = sys.argv[1] 
-ips = None
-if len(sys.argv) > 2: 
-  ips = sys.argv[2:]
+host = sys.argv[1]
+
+global lookup_count
+spf_count = 0
 
 def spf_ips(host):
   ips = []
-  for txtrecord in dns.resolver.query(host, 'TXT'):
+  textrecords = []
+  try:
+    textrecords = dns.resolver.query(host, 'TXT')
+  except :
+    print("<<<<<raise error %s>>>>>>" % host)
+
+  for txtrecord in textrecords:
     record = txtrecord.to_text().strip('"')
+    global spf_count
+    spf_count = spf_count + 1
+    print("  %s / spf count : %i" % (host, spf_count))
     if record.startswith('v=spf1'):
+      print(record)
       parts = record.split(' ')[1:-1]
       resolved_ips = [i for i in parts if not i.startswith('include:')]
+      for i in resolved_ips:
+        if i == 'a' or i == 'mx' or i.startswith('ptr'):
+          spf_count = spf_count + 1
+          print("    %s / spf count : %i" % (i, spf_count))
+
       ips = ips + resolved_ips
 
       includes = [i for i in parts if i.startswith('include:')]
@@ -27,18 +42,4 @@ def spf_ips(host):
         ips = ips + resolved_ips
   return ips
 
-def spf_ip_set(host):
-  records = spf_ips(host)
-  networks = [n[4:] for n in records]
-  return IPSet(networks)
-  
-
-if ips is None:
-  print spf_ips(host)
-else:
-  ip_set = spf_ip_set(host)
-  for ip in ips:
-    if ip in ip_set:
-      print "%s is whitelisted" % ip
-    else:
-      print "%s is not whitelisted" % ip
+print(spf_ips(host))
