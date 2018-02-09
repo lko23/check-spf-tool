@@ -8,7 +8,7 @@ if len(sys.argv) < 1:
 
 host = sys.argv[1]
 
-global lookup_count
+global spf_count
 spf_count = 0
 
 def spf_ips(host):
