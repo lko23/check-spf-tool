@@ -1,45 +1,55 @@
-from netaddr import IPNetwork, IPSet, IPAddress
-import sys
+#!/usr/bin/python3
+#
+# install dns package:
+# pip3 install dnspython
+
+import re, sys, socket, argparse
 import dns.resolver
 
-if len(sys.argv) < 1:
-  print("Usuage check_spf.py domain_name")
-  sys.exit(1)
+class SpfCheck:
 
-host = sys.argv[1]
+    MAX_LOOPS = 10
 
-global spf_count
-spf_count = 0
+    _num = 0
+    _warn_len = 254
 
-def spf_ips(host):
-  ips = []
-  textrecords = []
-  try:
-    textrecords = dns.resolver.query(host, 'TXT')
-  except :
-    print("<<<<<raise error %s>>>>>>" % host)
+    _ns = ''
+    _zone = ''
 
-  for txtrecord in textrecords:
-    record = txtrecord.to_text().strip('"')
-    global spf_count
-    spf_count = spf_count + 1
-    print("  %s / spf count : %i" % (host, spf_count))
-    if record.startswith('v=spf1'):
-      print(record)
-      parts = record.split(' ')[1:-1]
-      resolved_ips = [i for i in parts if not i.startswith('include:')]
-      for i in resolved_ips:
-        if i == 'a' or i == 'mx' or i.startswith('ptr'):
-          spf_count = spf_count + 1
-          print("    %s / spf count : %i" % (i, spf_count))
+    _rows = []
+    _warnings = []
 
-      ips = ips + resolved_ips
+    def __init__(self, zone, ns):
+        self._zone = zone
+        self._ns = ns
 
-      includes = [i for i in parts if i.startswith('include:')]
-      hosts = [i[8:] for i in includes]
-      for host in hosts:
-        resolved_ips = spf_ips(host)
-        ips = ips + resolved_ips
-  return ips
+    def set_warn_char(self, warn_len):
+        l = int(warn_len)
+        if l >= 200:
+            self._warn_len = l
 
-print(spf_ips(host))
+    def set_critical(self, txt):
+        print('CRITICAL: %s' % txt, file=sys.stderr)
+        exit(2)
+
+    def set_warning(self, txt):
+        self._warnings.append(txt)
+
+    def git(self, zone, type):
+        rows = []
+        resolv = dns.resolver.Resolver()
+        resolv.nameservers = [socket.gethostbyname(self._ns)]
+        res = resolv.resolve(zone, type, raise_on_no_answer=False)
+
+        if res.rrset is not None:
+            for row in res.rrset:
+                rows.append(str(row).strip('"'))
+        return rows
+
+    def get_spf_rec(self, zone):
+        res = self.git(zone, 'TXT')
+        for row in res:
+            if "v=spf1" in row:
+                return row
+        return None
+      
